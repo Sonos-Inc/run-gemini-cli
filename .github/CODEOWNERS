@@ -1,3 +1,2 @@
-* @google-github-actions/maintainers @google-github-actions/run-gemini-cli-maintainers
-
-.github/CODEOWNERS @google-github-actions/maintainers
+# Global owner(s)
+* @Sonos-Inc/client-devx-quality-eng
