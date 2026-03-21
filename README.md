@@ -1,5 +1,20 @@
 # run-gemini-cli
 
+## Sonos Fork
+> [!CAUTION]
+> This repository is public.  Do not commit any non-public informtion to this repository.
+
+This is a Sonos fork of `run-gemini-cli` public repo.  It maintains the relationship and takes periodic updates from the upstream project.
+
+Branch `sonos-main` contains bugfixes and patches that the upstream project has not accepted yet.
+
+To rebase this fork with latest from the upstream project:
+- Sync `main` with upstream project.
+- Open a PR from `main` to `sonos-main`.
+- Resolve any conflicts.
+- Once approved, merge the PR.
+- Create a release that matches the version in the upstream project.
+
 ## Overview
 
 `run-gemini-cli` is a GitHub Action that integrates [Gemini] into your development workflow via the [Gemini CLI]. It acts both as an autonomous agent for critical routine coding tasks, and an on-demand collaborator you can quickly delegate work to.
