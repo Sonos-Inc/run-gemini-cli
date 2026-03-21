@@ -10,10 +10,15 @@ Branch `sonos-main` contains bugfixes and patches that the upstream project has 
 
 To rebase this fork with latest from the upstream project:
 - Sync `main` with upstream project.
+- Create a release that matches the version commit in the upstream project, for example: `v0.1.21`
 - Open a PR from `main` to `sonos-main`.
 - Resolve any conflicts.
 - Once approved, merge the PR.
-- Create a release that matches the version in the upstream project.
+- Tag the latest commit on `sonos-main` with the major floating tag, for example: `v0`
+  ```shell
+  git tag -f v0
+  git push -f origin v0
+  ```
 
 ## Overview
 
