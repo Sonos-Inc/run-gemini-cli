@@ -319,23 +319,68 @@ runs:
 
         # Run Gemini CLI with the provided prompt, using JSON output format
         # We capture stdout (JSON) to TEMP_STDOUT and stderr to TEMP_STDERR
-        if [[ "${OUTPUT_TO_FILE}" = true ]]; then
-          echo "::notice::Gemini CLI output redirected to files (gemini-artifacts/)"
-          if ! gemini ${DEBUG_FLAG} --yolo --prompt "${PROMPT}" --output-format json 2> "${TEMP_STDERR}" 1> "${TEMP_STDOUT}"; then
-            FAILED=true
+        #
+        # Retry logic: The Gemini CLI can produce an empty response ("response": "")
+        # when the model returns only thought tokens with no visible text. This is an
+        # upstream bug (https://github.com/google-gemini/gemini-cli/issues/24290).
+        # We retry up to MAX_EMPTY_RESPONSE_RETRIES times on this specific condition.
+        MAX_EMPTY_RESPONSE_RETRIES=2
+        ATTEMPT=0
+        EMPTY_RESPONSE_RETRY=false
+
+        while true; do
+          ATTEMPT=$((ATTEMPT + 1))
+
+          if [[ "$EMPTY_RESPONSE_RETRY" == "true" ]]; then
+            echo "::warning::Gemini CLI returned empty response (attempt ${ATTEMPT}/$((MAX_EMPTY_RESPONSE_RETRIES + 1))). Retrying..."
+            : > "${TEMP_STDOUT}"
+            : > "${TEMP_STDERR}"
+            FAILED=false
           fi
-        elif [[ "${GEMINI_DEBUG}" = true ]]; then
-          echo "::warning::Gemini CLI debug logging is enabled. This will stream responses, which could reveal sensitive information if processed with untrusted inputs."
-          echo "::: Start Gemini CLI STDOUT :::"
-          if ! gemini ${DEBUG_FLAG} --yolo --prompt "${PROMPT}" --output-format json 2> >(tee "${TEMP_STDERR}" >&2) | tee "${TEMP_STDOUT}"; then
-            FAILED=true
+
+          if [[ "${OUTPUT_TO_FILE}" = true ]]; then
+            if [[ "$EMPTY_RESPONSE_RETRY" != "true" ]]; then
+              echo "::notice::Gemini CLI output redirected to files (gemini-artifacts/)"
+            fi
+            if ! gemini ${DEBUG_FLAG} --yolo --prompt "${PROMPT}" --output-format json 2> "${TEMP_STDERR}" 1> "${TEMP_STDOUT}"; then
+              FAILED=true
+            fi
+          elif [[ "${GEMINI_DEBUG}" = true ]]; then
+            if [[ "$EMPTY_RESPONSE_RETRY" != "true" ]]; then
+              echo "::warning::Gemini CLI debug logging is enabled. This will stream responses, which could reveal sensitive information if processed with untrusted inputs."
+            fi
+            echo "::: Start Gemini CLI STDOUT :::"
+            if ! gemini ${DEBUG_FLAG} --yolo --prompt "${PROMPT}" --output-format json 2> >(tee "${TEMP_STDERR}" >&2) | tee "${TEMP_STDOUT}"; then
+              FAILED=true
+            fi
+            # Wait for async stderr logging to complete. This is because process substitution in Bash is async so let tee finish writing to ${TEMP_STDERR}
+            sleep 1
+            echo "::: End Gemini CLI STDOUT :::"
+          else
+            if ! gemini --yolo --prompt "${PROMPT}" --output-format json 2> "${TEMP_STDERR}" 1> "${TEMP_STDOUT}"; then
+              FAILED=true
+            fi
           fi
-          # Wait for async stderr logging to complete. This is because process substitution in Bash is async so let tee finish writing to ${TEMP_STDERR}
-          sleep 1
-          echo "::: End Gemini CLI STDOUT :::"
-        else
-          if ! gemini --yolo --prompt "${PROMPT}" --output-format json 2> "${TEMP_STDERR}" 1> "${TEMP_STDOUT}"; then
-            FAILED=true
+
+          # Check for empty-response bug: CLI succeeded but model returned no text.
+          # Only retry on this specific condition — not on actual failures.
+          EMPTY_RESPONSE_RETRY=false
+          if [[ "$FAILED" != "true" ]] && jq -e . "${TEMP_STDOUT}" >/dev/null 2>&1; then
+            RESP_CHECK=$(jq -r '.response // ""' "${TEMP_STDOUT}")
+            if [[ -z "$RESP_CHECK" ]] && [[ $ATTEMPT -le $MAX_EMPTY_RESPONSE_RETRIES ]]; then
+              EMPTY_RESPONSE_RETRY=true
+              continue
+            fi
+          fi
+
+          break
+        done
+
+        if [[ $ATTEMPT -gt 1 ]]; then
+          if [[ -z "$RESP_CHECK" ]]; then
+            echo "::warning::Gemini CLI returned empty response after ${ATTEMPT} attempts"
+          else
+            echo "::notice::Gemini CLI succeeded on attempt ${ATTEMPT}"
           fi
         fi
 
